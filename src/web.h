@@ -2,10 +2,11 @@
 #include <Arduino.h>
 #include <WebServer.h>
 #include "shutter.h"
+#include "paper_feeder.h"
 
 class WebInterface {
 public:
-    void begin(Shutter& shutter, uint16_t port = 80);
+    void begin(Shutter& shutter, PaperFeeder& feeder, uint16_t port = 80);
     void loop();
 
 private:
@@ -15,6 +16,16 @@ private:
     void handleSave();
     void handleSnapshot();
 
-    WebServer* _server   = nullptr;
-    Shutter*   _shutter  = nullptr;
+    void handleFeed();
+    void handleFeedJog();
+    void handleFeedStop();
+    void handleFeedSettingsGet();
+    void handleFeedSettingsSave();
+    void handleFeedAuto();
+
+    WebServer*   _server          = nullptr;
+    Shutter*     _shutter         = nullptr;
+    PaperFeeder* _feeder          = nullptr;
+    bool         _autoFeedEnabled = false;
+    bool         _autoFeedPending = false;
 };

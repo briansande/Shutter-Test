@@ -53,6 +53,15 @@ static const char HTML_PAGE[] PROGMEM = R"rawliteral(
   .snap-row  { display: flex; gap: 12px; margin-top: 12px; align-items: stretch; }
   .snap-row .field { margin-bottom: 0; flex: 1; }
   .snap-row .btn { flex: 1; margin: 0; }
+  .section-title { text-align: center; font-size: 0.9rem; margin-top: 24px; margin-bottom: 12px; color: #e94560; border-top: 1px solid #0f3460; padding-top: 20px; }
+  .feed-status { text-align: center; font-size: 0.9rem; margin-bottom: 12px; color: #aaa; }
+  .jog-row { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
+  .btn-jog { background: #0f3460; color: #fff; padding: 10px 16px; border: none; border-radius: 8px; font-size: 0.9rem; cursor: pointer; flex: 1; }
+  .btn-jog:hover { opacity: 0.85; }
+  .btn-feed { background: #1a936f; color: #fff; margin-top: 12px; width: 100%; }
+  .btn-stop { background: #c44536; color: #fff; margin-top: 8px; width: 100%; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 0.9rem; }
+  .checkbox-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: #e94560; }
   .ip { text-align: center; margin-top: 16px; font-size: 0.8rem; color: #555; }
   .toast {
     display: none; position: fixed; bottom: 30px; left: 50%;
@@ -92,6 +101,33 @@ static const char HTML_PAGE[] PROGMEM = R"rawliteral(
     </div>
     <button class="btn btn-snap" onclick="takeSnapshot()">SNAPSHOT</button>
   </div>
+
+  <div class="section-title">Paper Feed</div>
+  <div class="feed-status" id="feedStatus">Feeder: IDLE</div>
+
+  <div class="field">
+    <label for="feedRotations">Feed rotations</label>
+    <input type="number" id="feedRotations" min="1" max="100" step="1" value="%d">
+  </div>
+  <div class="field">
+    <label for="jogSteps">Jog steps (for calibration)</label>
+    <input type="number" id="jogSteps" min="1" max="4096" step="1" value="%d">
+  </div>
+
+  <button class="btn btn-feed" onclick="feedPaper()">FEED</button>
+
+  <div class="jog-row">
+    <button class="btn-jog" onclick="jog(-1)">JOG REV</button>
+    <button class="btn-jog" onclick="jog(1)">JOG FWD</button>
+  </div>
+
+  <div class="checkbox-row">
+    <input type="checkbox" id="autoFeed" %s onchange="setAutoFeed()">
+    <label for="autoFeed">Auto-feed after snapshot</label>
+  </div>
+
+  <button class="btn btn-save" onclick="saveFeedSettings()">Save Feed Settings</button>
+  <button class="btn btn-stop" onclick="stopFeeder()">STOP MOTOR</button>
 
   <div class="ip">IP: %s</div>
 </div>
@@ -137,6 +173,60 @@ function takeSnapshot() {
       showToast('Snapshot: open for ' + dur + ' ms');
     })
     .catch(function(){ showToast('Error during snapshot'); });
+}
+
+function feedPaper() {
+  var rot = parseInt(document.getElementById('feedRotations').value);
+  if (isNaN(rot) || rot < 1) { showToast('Enter valid rotations'); return; }
+  document.getElementById('feedStatus').textContent = 'Feeder: FEEDING...';
+  fetch('/feed?rotations=' + rot, {method:'POST'})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      document.getElementById('feedStatus').textContent = 'Feeder: IDLE';
+      showToast('Fed ' + d.rotations + ' rotation(s)');
+    })
+    .catch(function(){ showToast('Error feeding paper'); });
+}
+
+function jog(dir) {
+  var steps = parseInt(document.getElementById('jogSteps').value);
+  if (isNaN(steps) || steps < 1) { showToast('Enter valid jog steps'); return; }
+  var actual = steps * dir;
+  document.getElementById('feedStatus').textContent = 'Feeder: JOGGING...';
+  fetch('/feed/jog?steps=' + actual, {method:'POST'})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      document.getElementById('feedStatus').textContent = 'Feeder: IDLE';
+      showToast('Jogged ' + d.steps + ' steps');
+    })
+    .catch(function(){ showToast('Error jogging'); });
+}
+
+function stopFeeder() {
+  fetch('/feed/stop', {method:'POST'})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      document.getElementById('feedStatus').textContent = 'Feeder: IDLE';
+      showToast('Motor stopped');
+    })
+    .catch(function(){ showToast('Error stopping motor'); });
+}
+
+function saveFeedSettings() {
+  var rot = parseInt(document.getElementById('feedRotations').value);
+  if (isNaN(rot) || rot < 1) { showToast('Enter valid rotations'); return; }
+  fetch('/feed/settings?rotations=' + rot, {method:'POST'})
+    .then(function(r){ return r.json(); })
+    .then(function(d){ showToast(d.ok ? 'Feed settings saved' : 'Save failed'); })
+    .catch(function(){ showToast('Error saving feed settings'); });
+}
+
+function setAutoFeed() {
+  var enabled = document.getElementById('autoFeed').checked ? '1' : '0';
+  fetch('/feed/auto?enabled=' + enabled, {method:'POST'})
+    .then(function(r){ return r.json(); })
+    .then(function(d){ showToast(d.ok ? 'Auto-feed ' + (document.getElementById('autoFeed').checked ? 'enabled' : 'disabled') : 'Failed'); })
+    .catch(function(){ showToast('Error setting auto-feed'); });
 }
 </script>
 </body>
