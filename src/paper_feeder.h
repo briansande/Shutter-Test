@@ -20,16 +20,25 @@ private:
     int  _pins[4];
     int  _stepsPerRev    = 4096;
     int  _stepDelayMs    = 2;
+    int  _startupStepDelayMs = 8;
+    int  _startupSettleMs = 50;
+    int  _rampSteps      = 32;
+    int  _activeStepDelayMs = 2;
     int  _feedRotations  = 1;
     bool _feeding        = false;
+    bool _settling       = false;
     int  _direction      = 1;
     int  _seqIdx         = 0;
     int32_t _remainingSteps = 0;
+    int32_t _completedSteps = 0;
     unsigned long _lastStepAt = 0;
 
-    static const uint8_t HALF_STEP_SEQ[8][4];
+    static const uint8_t DRIVE_SEQ[4][4];
 
     void queueSteps(int32_t steps);
+    void advanceSequence(int direction);
+    void updateStepDelay();
+    void completeMove();
     void step(int stepIndex);
     void release();
 };

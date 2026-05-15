@@ -2,14 +2,12 @@
 #include "settings.h"
 #include "config.h"
 
-const uint8_t PaperFeeder::HALF_STEP_SEQ[8][4] = {
-    {1, 0, 0, 0},
+const uint8_t PaperFeeder::DRIVE_SEQ[4][4] = {
+    // Two-coil full-step order for IN1, IN2, IN3, IN4. This gives the
+    // feed roller more holding torque than half-step's single-coil phases.
     {1, 1, 0, 0},
-    {0, 1, 0, 0},
     {0, 1, 1, 0},
-    {0, 0, 1, 0},
     {0, 0, 1, 1},
-    {0, 0, 0, 1},
     {1, 0, 0, 1},
 };
 
@@ -22,6 +20,18 @@ void PaperFeeder::begin(int in1, int in2, int in3, int in4,
     _pins[3] = in4;
     _stepsPerRev   = stepsPerRev;
     _stepDelayMs   = stepDelayMs;
+    _startupStepDelayMs = config::feeder::STARTUP_STEP_DELAY_MS;
+    if (_startupStepDelayMs < _stepDelayMs) {
+        _startupStepDelayMs = _stepDelayMs;
+    }
+    _startupSettleMs = config::feeder::STARTUP_SETTLE_MS;
+    if (_startupSettleMs < 0) {
+        _startupSettleMs = 0;
+    }
+    _rampSteps = config::feeder::RAMP_STEPS;
+    if (_rampSteps < 1) {
+        _rampSteps = 1;
+    }
     _feedRotations = settings::loadInt(
         config::feeder::NVS_NAMESPACE,
         config::feeder::NVS_KEY_ROT,
@@ -37,9 +47,10 @@ void PaperFeeder::begin(int in1, int in2, int in3, int in4,
         digitalWrite(_pins[i], LOW);
     }
 
-    Serial.printf("[Feeder] begin pins=%d,%d,%d,%d steps/rev=%d rot=%d\n",
+    Serial.printf("[Feeder] begin pins=%d,%d,%d,%d steps/rev=%d rot=%d delay=%d startup=%d settle=%d ramp=%d\n",
                   _pins[0], _pins[1], _pins[2], _pins[3],
-                  _stepsPerRev, _feedRotations);
+                  _stepsPerRev, _feedRotations, _stepDelayMs,
+                  _startupStepDelayMs, _startupSettleMs, _rampSteps);
 }
 
 void PaperFeeder::feed(int rotations) {
@@ -61,6 +72,7 @@ void PaperFeeder::jog(int steps) {
 
 void PaperFeeder::stop() {
     _feeding = false;
+    _settling = false;
     _remainingSteps = 0;
     release();
     Serial.println("[Feeder] stopped");
@@ -70,19 +82,30 @@ void PaperFeeder::loop() {
     if (!_feeding) return;
 
     unsigned long now = millis();
-    if ((unsigned long)(now - _lastStepAt) < (unsigned long)_stepDelayMs) {
+    if (_settling) {
+        if ((unsigned long)(now - _lastStepAt) < (unsigned long)_startupSettleMs) {
+            return;
+        }
+        _settling = false;
+        _lastStepAt = now;
+        return;
+    }
+
+    if ((unsigned long)(now - _lastStepAt) < (unsigned long)_activeStepDelayMs) {
         return;
     }
     _lastStepAt = now;
 
-    _seqIdx = (_seqIdx + _direction) & 7;
+    advanceSequence(_direction);
     step(_seqIdx);
+    _completedSteps++;
 
     if (--_remainingSteps <= 0) {
-        _feeding = false;
-        release();
-        Serial.println("[Feeder] feed complete");
+        completeMove();
+        return;
     }
+
+    updateStepDelay();
 }
 
 int  PaperFeeder::feedRotations() const { return _feedRotations; }
@@ -105,16 +128,56 @@ void PaperFeeder::queueSteps(int32_t steps) {
 
     _direction = (steps > 0) ? 1 : -1;
     _remainingSteps = (steps > 0) ? steps : -steps;
-    _lastStepAt = 0;
+    _completedSteps = 0;
+    _activeStepDelayMs = _startupStepDelayMs;
+    _settling = true;
     _feeding = true;
 
     Serial.printf("[Feeder] queued %ld steps (%s)\n", (long)_remainingSteps,
                   _direction > 0 ? "forward" : "reverse");
+
+    step(_seqIdx);
+    _lastStepAt = millis();
+}
+
+void PaperFeeder::advanceSequence(int direction) {
+    _seqIdx += direction;
+    if (_seqIdx >= 4) {
+        _seqIdx = 0;
+    } else if (_seqIdx < 0) {
+        _seqIdx = 3;
+    }
+}
+
+void PaperFeeder::updateStepDelay() {
+    if (_activeStepDelayMs <= _stepDelayMs) {
+        _activeStepDelayMs = _stepDelayMs;
+        return;
+    }
+
+    int delayRange = _startupStepDelayMs - _stepDelayMs;
+    int32_t rampedSteps = _completedSteps;
+    if (rampedSteps > _rampSteps) {
+        rampedSteps = _rampSteps;
+    }
+
+    _activeStepDelayMs = _startupStepDelayMs -
+        (int)((delayRange * rampedSteps) / _rampSteps);
+    if (_activeStepDelayMs < _stepDelayMs) {
+        _activeStepDelayMs = _stepDelayMs;
+    }
+}
+
+void PaperFeeder::completeMove() {
+    _feeding = false;
+    _settling = false;
+    release();
+    Serial.println("[Feeder] feed complete");
 }
 
 void PaperFeeder::step(int stepIndex) {
     for (int i = 0; i < 4; i++) {
-        digitalWrite(_pins[i], HALF_STEP_SEQ[stepIndex][i]);
+        digitalWrite(_pins[i], DRIVE_SEQ[stepIndex][i]);
     }
 }
 

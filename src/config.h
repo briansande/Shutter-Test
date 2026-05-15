@@ -25,9 +25,12 @@ namespace config {
         static const int IN3_PIN = 33;
         static const int IN4_PIN = 32;
 
-        static const int STEPS_PER_REV = 4096;
+        static const int STEPS_PER_REV = 2048;
         static const int DEFAULT_FEED_ROTATIONS = 1;
-        static const int STEP_DELAY_MS = 2;
+        static const int STEP_DELAY_MS = 4;
+        static const int STARTUP_STEP_DELAY_MS = 12;
+        static const int STARTUP_SETTLE_MS = 50;
+        static const int RAMP_STEPS = 64;
         static const int MIN_FEED_ROTATIONS = 1;
         static const int MAX_FEED_ROTATIONS = 100;
         static const int MAX_JOG_STEPS = 4096;
@@ -35,6 +38,6 @@ namespace config {
         static const char* NVS_NAMESPACE   = "feeder";
         static const char* NVS_KEY_ROT     = "feedRot";
         static const char* NVS_KEY_AUTO    = "autoFeed";
-        static const int  JOG_STEPS        = 128;
+        static const int  JOG_STEPS        = 64;
     }
 }
