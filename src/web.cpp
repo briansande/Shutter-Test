@@ -69,12 +69,13 @@ void WebInterface::loop() {
 }
 
 void WebInterface::handleRoot() {
-    size_t sz = sizeof(HTML_PAGE) + 160;
+    size_t sz = sizeof(HTML_PAGE) + 192;
     char* buf = new char[sz];
     snprintf(buf, sz, HTML_PAGE,
              _shutter->openAngle(),
              _shutter->closeAngle(),
              _feeder->feedRotations(),
+             _feeder->feedSpeedStepsPerSec(),
              config::feeder::JOG_STEPS,
              _autoFeedEnabled ? "checked" : "",
              WiFi.localIP().toString().c_str());
@@ -137,6 +138,7 @@ void WebInterface::handleSnapshot() {
 
 void WebInterface::handleFeed() {
     int rot = _feeder->feedRotations();
+    int speed = _feeder->feedSpeedStepsPerSec();
     if (_server->hasArg("rotations")) {
         long r = 0;
         if (!parseIntArg(_server, "rotations",
@@ -147,12 +149,24 @@ void WebInterface::handleFeed() {
         }
         rot = (int)r;
     }
+    if (_server->hasArg("speed")) {
+        long s = 0;
+        if (!parseIntArg(_server, "speed",
+                         config::feeder::MIN_FEED_SPEED_STEPS_PER_SEC,
+                         config::feeder::MAX_FEED_SPEED_STEPS_PER_SEC, s)) {
+            _server->send(400, "application/json", "{\"ok\":false,\"error\":\"invalid speed\"}");
+            return;
+        }
+        speed = (int)s;
+    }
     if (_feeder->isFeeding()) {
         _server->send(409, "application/json", "{\"ok\":false,\"error\":\"feeder busy\"}");
         return;
     }
+    _feeder->setFeedSpeedStepsPerSec(speed, false);
     _feeder->feed(rot);
-    String json = "{\"ok\":true,\"rotations\":" + String(rot) + "}";
+    String json = "{\"ok\":true,\"rotations\":" + String(rot)
+                + ",\"speed\":" + String(speed) + "}";
     _server->send(200, "application/json", json);
 }
 
@@ -173,6 +187,16 @@ void WebInterface::handleFeedJog() {
         _server->send(409, "application/json", "{\"ok\":false,\"error\":\"feeder busy\"}");
         return;
     }
+    if (_server->hasArg("speed")) {
+        long speed = 0;
+        if (!parseIntArg(_server, "speed",
+                         config::feeder::MIN_FEED_SPEED_STEPS_PER_SEC,
+                         config::feeder::MAX_FEED_SPEED_STEPS_PER_SEC, speed)) {
+            _server->send(400, "application/json", "{\"ok\":false,\"error\":\"invalid speed\"}");
+            return;
+        }
+        _feeder->setFeedSpeedStepsPerSec((int)speed, false);
+    }
     _feeder->jog((int)steps);
     String json = "{\"ok\":true,\"steps\":" + String(steps) + "}";
     _server->send(200, "application/json", json);
@@ -185,22 +209,40 @@ void WebInterface::handleFeedStop() {
 
 void WebInterface::handleFeedSettingsGet() {
     String json = "{\"rotations\":" + String(_feeder->feedRotations())
+                + ",\"speed\":" + String(_feeder->feedSpeedStepsPerSec())
                 + ",\"autoFeed\":" + String(_autoFeedEnabled ? "true" : "false") + "}";
     _server->send(200, "application/json", json);
 }
 
 void WebInterface::handleFeedSettingsSave() {
+    bool changed = false;
     if (_server->hasArg("rotations")) {
         long rot = 0;
-        if (parseIntArg(_server, "rotations",
-                        config::feeder::MIN_FEED_ROTATIONS,
-                        config::feeder::MAX_FEED_ROTATIONS, rot)) {
-            _feeder->setFeedRotations((int)rot);
-            _server->send(200, "application/json", "{\"ok\":true}");
+        if (!parseIntArg(_server, "rotations",
+                         config::feeder::MIN_FEED_ROTATIONS,
+                         config::feeder::MAX_FEED_ROTATIONS, rot)) {
+            _server->send(400, "application/json", "{\"ok\":false,\"error\":\"invalid rotations\"}");
             return;
         }
+        _feeder->setFeedRotations((int)rot);
+        changed = true;
     }
-    _server->send(400, "application/json", "{\"ok\":false}");
+    if (_server->hasArg("speed")) {
+        long speed = 0;
+        if (!parseIntArg(_server, "speed",
+                         config::feeder::MIN_FEED_SPEED_STEPS_PER_SEC,
+                         config::feeder::MAX_FEED_SPEED_STEPS_PER_SEC, speed)) {
+            _server->send(400, "application/json", "{\"ok\":false,\"error\":\"invalid speed\"}");
+            return;
+        }
+        _feeder->setFeedSpeedStepsPerSec((int)speed);
+        changed = true;
+    }
+    if (changed) {
+        _server->send(200, "application/json", "{\"ok\":true}");
+        return;
+    }
+    _server->send(400, "application/json", "{\"ok\":false,\"error\":\"missing setting\"}");
 }
 
 void WebInterface::handleFeedAuto() {

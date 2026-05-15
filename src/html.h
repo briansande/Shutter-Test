@@ -110,6 +110,10 @@ static const char HTML_PAGE[] PROGMEM = R"rawliteral(
     <input type="number" id="feedRotations" min="1" max="100" step="1" value="%d">
   </div>
   <div class="field">
+    <label for="feedSpeed">Feed speed (steps/sec)</label>
+    <input type="number" id="feedSpeed" min="100" max="1000" step="50" value="%d">
+  </div>
+  <div class="field">
     <label for="jogSteps">Jog steps (for calibration)</label>
     <input type="number" id="jogSteps" min="1" max="4096" step="1" value="%d">
   </div>
@@ -177,23 +181,27 @@ function takeSnapshot() {
 
 function feedPaper() {
   var rot = parseInt(document.getElementById('feedRotations').value);
+  var speed = parseInt(document.getElementById('feedSpeed').value);
   if (isNaN(rot) || rot < 1) { showToast('Enter valid rotations'); return; }
+  if (isNaN(speed) || speed < 100 || speed > 1000) { showToast('Speed must be 100\u20131000'); return; }
   document.getElementById('feedStatus').textContent = 'Feeder: FEEDING...';
-  fetch('/feed?rotations=' + rot, {method:'POST'})
+  fetch('/feed?rotations=' + rot + '&speed=' + speed, {method:'POST'})
     .then(function(r){ return r.json(); })
     .then(function(d){
       document.getElementById('feedStatus').textContent = 'Feeder: IDLE';
-      showToast('Fed ' + d.rotations + ' rotation(s)');
+      showToast('Fed ' + d.rotations + ' rotation(s) @ ' + d.speed + ' steps/sec');
     })
     .catch(function(){ showToast('Error feeding paper'); });
 }
 
 function jog(dir) {
   var steps = parseInt(document.getElementById('jogSteps').value);
+  var speed = parseInt(document.getElementById('feedSpeed').value);
   if (isNaN(steps) || steps < 1) { showToast('Enter valid jog steps'); return; }
+  if (isNaN(speed) || speed < 100 || speed > 1000) { showToast('Speed must be 100\u20131000'); return; }
   var actual = steps * dir;
   document.getElementById('feedStatus').textContent = 'Feeder: JOGGING...';
-  fetch('/feed/jog?steps=' + actual, {method:'POST'})
+  fetch('/feed/jog?steps=' + actual + '&speed=' + speed, {method:'POST'})
     .then(function(r){ return r.json(); })
     .then(function(d){
       document.getElementById('feedStatus').textContent = 'Feeder: IDLE';
@@ -214,8 +222,10 @@ function stopFeeder() {
 
 function saveFeedSettings() {
   var rot = parseInt(document.getElementById('feedRotations').value);
+  var speed = parseInt(document.getElementById('feedSpeed').value);
   if (isNaN(rot) || rot < 1) { showToast('Enter valid rotations'); return; }
-  fetch('/feed/settings?rotations=' + rot, {method:'POST'})
+  if (isNaN(speed) || speed < 100 || speed > 1000) { showToast('Speed must be 100\u20131000'); return; }
+  fetch('/feed/settings?rotations=' + rot + '&speed=' + speed, {method:'POST'})
     .then(function(r){ return r.json(); })
     .then(function(d){ showToast(d.ok ? 'Feed settings saved' : 'Save failed'); })
     .catch(function(){ showToast('Error saving feed settings'); });

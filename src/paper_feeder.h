@@ -14,6 +14,8 @@ public:
 
     int  feedRotations() const;
     void setFeedRotations(int rot);
+    int  feedSpeedStepsPerSec() const;
+    void setFeedSpeedStepsPerSec(int speed, bool persist = true);
     bool isFeeding() const;
 
 private:
@@ -25,6 +27,7 @@ private:
     int  _rampSteps      = 32;
     int  _activeStepDelayMs = 2;
     int  _feedRotations  = 1;
+    int  _feedSpeedStepsPerSec = 500;
     bool _feeding        = false;
     bool _settling       = false;
     int  _direction      = 1;

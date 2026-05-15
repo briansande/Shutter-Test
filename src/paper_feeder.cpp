@@ -11,6 +11,34 @@ const uint8_t PaperFeeder::DRIVE_SEQ[4][4] = {
     {1, 0, 0, 1},
 };
 
+namespace {
+int clampFeedSpeed(int speed) {
+    if (speed < config::feeder::MIN_FEED_SPEED_STEPS_PER_SEC) {
+        return config::feeder::MIN_FEED_SPEED_STEPS_PER_SEC;
+    }
+    if (speed > config::feeder::MAX_FEED_SPEED_STEPS_PER_SEC) {
+        return config::feeder::MAX_FEED_SPEED_STEPS_PER_SEC;
+    }
+    return speed;
+}
+
+int speedToDelayMs(int speed) {
+    speed = clampFeedSpeed(speed);
+    int delayMs = 1000 / speed;
+    if (delayMs < 1) {
+        delayMs = 1;
+    }
+    return delayMs;
+}
+
+int delayToSpeed(int delayMs) {
+    if (delayMs < 1) {
+        delayMs = 1;
+    }
+    return clampFeedSpeed(1000 / delayMs);
+}
+}
+
 void PaperFeeder::begin(int in1, int in2, int in3, int in4,
                          int stepsPerRev, int stepDelayMs,
                          int defaultRotations) {
@@ -19,7 +47,12 @@ void PaperFeeder::begin(int in1, int in2, int in3, int in4,
     _pins[2] = in3;
     _pins[3] = in4;
     _stepsPerRev   = stepsPerRev;
-    _stepDelayMs   = stepDelayMs;
+    _feedSpeedStepsPerSec = settings::loadInt(
+        config::feeder::NVS_NAMESPACE,
+        config::feeder::NVS_KEY_SPEED,
+        delayToSpeed(stepDelayMs));
+    _feedSpeedStepsPerSec = clampFeedSpeed(_feedSpeedStepsPerSec);
+    _stepDelayMs = speedToDelayMs(_feedSpeedStepsPerSec);
     _startupStepDelayMs = config::feeder::STARTUP_STEP_DELAY_MS;
     if (_startupStepDelayMs < _stepDelayMs) {
         _startupStepDelayMs = _stepDelayMs;
@@ -47,9 +80,9 @@ void PaperFeeder::begin(int in1, int in2, int in3, int in4,
         digitalWrite(_pins[i], LOW);
     }
 
-    Serial.printf("[Feeder] begin pins=%d,%d,%d,%d steps/rev=%d rot=%d delay=%d startup=%d settle=%d ramp=%d\n",
+    Serial.printf("[Feeder] begin pins=%d,%d,%d,%d steps/rev=%d rot=%d speed=%d delay=%d startup=%d settle=%d ramp=%d\n",
                   _pins[0], _pins[1], _pins[2], _pins[3],
-                  _stepsPerRev, _feedRotations, _stepDelayMs,
+                  _stepsPerRev, _feedRotations, _feedSpeedStepsPerSec, _stepDelayMs,
                   _startupStepDelayMs, _startupSettleMs, _rampSteps);
 }
 
@@ -109,6 +142,7 @@ void PaperFeeder::loop() {
 }
 
 int  PaperFeeder::feedRotations() const { return _feedRotations; }
+
 void PaperFeeder::setFeedRotations(int rot) {
     if (rot < config::feeder::MIN_FEED_ROTATIONS) {
         rot = config::feeder::MIN_FEED_ROTATIONS;
@@ -120,6 +154,24 @@ void PaperFeeder::setFeedRotations(int rot) {
                       config::feeder::NVS_KEY_ROT, rot);
     Serial.printf("[Feeder] feedRotations set to %d\n", rot);
 }
+
+int PaperFeeder::feedSpeedStepsPerSec() const { return _feedSpeedStepsPerSec; }
+
+void PaperFeeder::setFeedSpeedStepsPerSec(int speed, bool persist) {
+    speed = clampFeedSpeed(speed);
+    _feedSpeedStepsPerSec = speed;
+    _stepDelayMs = speedToDelayMs(speed);
+    if (_startupStepDelayMs < _stepDelayMs) {
+        _startupStepDelayMs = _stepDelayMs;
+    }
+    if (persist) {
+        settings::saveInt(config::feeder::NVS_NAMESPACE,
+                          config::feeder::NVS_KEY_SPEED, speed);
+    }
+    Serial.printf("[Feeder] feedSpeed set to %d steps/sec (delay=%d ms)\n",
+                  speed, _stepDelayMs);
+}
+
 bool PaperFeeder::isFeeding() const { return _feeding; }
 
 void PaperFeeder::queueSteps(int32_t steps) {
