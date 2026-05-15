@@ -26,5 +26,7 @@ private:
     int           _closeAngle = 74;
     int           _currentAngle = 74;
     bool          _isOpen     = false;
-    unsigned long _autoCloseAt = 0;
+    bool          _autoClosePending = false;
+    unsigned long _autoCloseStartMs = 0;
+    unsigned long _autoCloseDurationMs = 0;
 };

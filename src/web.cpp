@@ -3,6 +3,35 @@
 #include "settings.h"
 #include "config.h"
 #include <WiFi.h>
+#include <errno.h>
+#include <stdlib.h>
+
+namespace {
+bool parseIntArg(WebServer* server, const char* name, long minValue, long maxValue, long& value) {
+    if (!server->hasArg(name)) {
+        return false;
+    }
+
+    String text = server->arg(name);
+    text.trim();
+    if (text.length() == 0) {
+        return false;
+    }
+
+    errno = 0;
+    char* end = nullptr;
+    long parsed = strtol(text.c_str(), &end, 10);
+    if (errno == ERANGE || end == text.c_str() || *end != '\0') {
+        return false;
+    }
+    if (parsed < minValue || parsed > maxValue) {
+        return false;
+    }
+
+    value = parsed;
+    return true;
+}
+}
 
 void WebInterface::begin(Shutter& shutter, PaperFeeder& feeder, uint16_t port) {
     _shutter = &shutter;
@@ -33,7 +62,7 @@ void WebInterface::begin(Shutter& shutter, PaperFeeder& feeder, uint16_t port) {
 void WebInterface::loop() {
     _server->handleClient();
 
-    if (_autoFeedPending && !_shutter->isOpen()) {
+    if (_autoFeedPending && !_shutter->isOpen() && !_feeder->isFeeding()) {
         _autoFeedPending = false;
         _feeder->feed(_feeder->feedRotations());
     }
@@ -67,13 +96,14 @@ void WebInterface::handleClose() {
 
 void WebInterface::handleSave() {
     if (_server->hasArg("open") && _server->hasArg("close")) {
-        int o = _server->arg("open").toInt();
-        int c = _server->arg("close").toInt();
-        if (o >= 0 && o <= 180 && c >= 0 && c <= 180) {
-            _shutter->setOpenAngle(o);
-            _shutter->setCloseAngle(c);
-            settings::saveInt(config::NVS_NAMESPACE, config::NVS_KEY_OPEN,  o);
-            settings::saveInt(config::NVS_NAMESPACE, config::NVS_KEY_CLOSE, c);
+        long o = 0;
+        long c = 0;
+        if (parseIntArg(_server, "open", 0, 180, o) &&
+            parseIntArg(_server, "close", 0, 180, c)) {
+            _shutter->setOpenAngle((int)o);
+            _shutter->setCloseAngle((int)c);
+            settings::saveInt(config::NVS_NAMESPACE, config::NVS_KEY_OPEN,  (int)o);
+            settings::saveInt(config::NVS_NAMESPACE, config::NVS_KEY_CLOSE, (int)c);
             _server->send(200, "application/json", "{\"ok\":true}");
             return;
         }
@@ -86,8 +116,13 @@ void WebInterface::handleSnapshot() {
         _server->send(400, "application/json", "{\"ok\":false,\"error\":\"missing duration\"}");
         return;
     }
-    long dur = _server->arg("duration").toInt();
-    if (dur < 1) dur = 500;
+    long dur = 0;
+    if (!parseIntArg(_server, "duration",
+                     (long)config::MIN_SNAPSHOT_MS,
+                     (long)config::MAX_SNAPSHOT_MS, dur)) {
+        _server->send(400, "application/json", "{\"ok\":false,\"error\":\"invalid duration\"}");
+        return;
+    }
 
     _shutter->snapshot((unsigned long)dur);
 
@@ -103,8 +138,18 @@ void WebInterface::handleSnapshot() {
 void WebInterface::handleFeed() {
     int rot = _feeder->feedRotations();
     if (_server->hasArg("rotations")) {
-        int r = _server->arg("rotations").toInt();
-        if (r >= 1) rot = r;
+        long r = 0;
+        if (!parseIntArg(_server, "rotations",
+                         config::feeder::MIN_FEED_ROTATIONS,
+                         config::feeder::MAX_FEED_ROTATIONS, r)) {
+            _server->send(400, "application/json", "{\"ok\":false,\"error\":\"invalid rotations\"}");
+            return;
+        }
+        rot = (int)r;
+    }
+    if (_feeder->isFeeding()) {
+        _server->send(409, "application/json", "{\"ok\":false,\"error\":\"feeder busy\"}");
+        return;
     }
     _feeder->feed(rot);
     String json = "{\"ok\":true,\"rotations\":" + String(rot) + "}";
@@ -116,8 +161,19 @@ void WebInterface::handleFeedJog() {
         _server->send(400, "application/json", "{\"ok\":false,\"error\":\"missing steps\"}");
         return;
     }
-    int steps = _server->arg("steps").toInt();
-    _feeder->jog(steps);
+    long steps = 0;
+    if (!parseIntArg(_server, "steps",
+                     -config::feeder::MAX_JOG_STEPS,
+                     config::feeder::MAX_JOG_STEPS, steps) ||
+        steps == 0) {
+        _server->send(400, "application/json", "{\"ok\":false,\"error\":\"invalid steps\"}");
+        return;
+    }
+    if (_feeder->isFeeding()) {
+        _server->send(409, "application/json", "{\"ok\":false,\"error\":\"feeder busy\"}");
+        return;
+    }
+    _feeder->jog((int)steps);
     String json = "{\"ok\":true,\"steps\":" + String(steps) + "}";
     _server->send(200, "application/json", json);
 }
@@ -135,9 +191,11 @@ void WebInterface::handleFeedSettingsGet() {
 
 void WebInterface::handleFeedSettingsSave() {
     if (_server->hasArg("rotations")) {
-        int rot = _server->arg("rotations").toInt();
-        if (rot >= 1) {
-            _feeder->setFeedRotations(rot);
+        long rot = 0;
+        if (parseIntArg(_server, "rotations",
+                        config::feeder::MIN_FEED_ROTATIONS,
+                        config::feeder::MAX_FEED_ROTATIONS, rot)) {
+            _feeder->setFeedRotations((int)rot);
             _server->send(200, "application/json", "{\"ok\":true}");
             return;
         }
@@ -147,7 +205,12 @@ void WebInterface::handleFeedSettingsSave() {
 
 void WebInterface::handleFeedAuto() {
     if (_server->hasArg("enabled")) {
-        _autoFeedEnabled = _server->arg("enabled").toInt() != 0;
+        long enabled = 0;
+        if (!parseIntArg(_server, "enabled", 0, 1, enabled)) {
+            _server->send(400, "application/json", "{\"ok\":false}");
+            return;
+        }
+        _autoFeedEnabled = enabled != 0;
         settings::saveInt(config::feeder::NVS_NAMESPACE,
                           config::feeder::NVS_KEY_AUTO,
                           _autoFeedEnabled ? 1 : 0);

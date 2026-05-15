@@ -22,9 +22,14 @@ private:
     int  _stepDelayMs    = 2;
     int  _feedRotations  = 1;
     bool _feeding        = false;
+    int  _direction      = 1;
+    int  _seqIdx         = 0;
+    int32_t _remainingSteps = 0;
+    unsigned long _lastStepAt = 0;
 
     static const uint8_t HALF_STEP_SEQ[8][4];
 
+    void queueSteps(int32_t steps);
     void step(int stepIndex);
     void release();
 };

@@ -16,6 +16,8 @@ namespace config {
     static const char* NVS_KEY_CLOSE = "closeAngle";
 
     static const uint16_t WEB_PORT = 80;
+    static const unsigned long MIN_SNAPSHOT_MS = 1;
+    static const unsigned long MAX_SNAPSHOT_MS = 60000;
 
     namespace feeder {
         static const int IN1_PIN = 26;
@@ -26,6 +28,9 @@ namespace config {
         static const int STEPS_PER_REV = 4096;
         static const int DEFAULT_FEED_ROTATIONS = 1;
         static const int STEP_DELAY_MS = 2;
+        static const int MIN_FEED_ROTATIONS = 1;
+        static const int MAX_FEED_ROTATIONS = 100;
+        static const int MAX_JOG_STEPS = 4096;
 
         static const char* NVS_NAMESPACE   = "feeder";
         static const char* NVS_KEY_ROT     = "feedRot";

@@ -11,6 +11,7 @@ void Shutter::begin(int pin, int openAngle, int closeAngle,
     _servo.write(_closeAngle);
     _currentAngle = _closeAngle;
     _isOpen = false;
+    _autoClosePending = false;
 
     Serial.printf("[Shutter] begin pin=%d open=%d close=%d\n", _pin, _openAngle, _closeAngle);
 }
@@ -19,31 +20,33 @@ void Shutter::open() {
     _servo.write(_openAngle);
     _currentAngle = _openAngle;
     _isOpen = true;
-    _autoCloseAt = 0;
-    Serial.printf("[Shutter] -> OPEN (%d°)\n", _openAngle);
+    _autoClosePending = false;
+    Serial.printf("[Shutter] -> OPEN (%d deg)\n", _openAngle);
 }
 
 void Shutter::close() {
     _servo.write(_closeAngle);
     _currentAngle = _closeAngle;
     _isOpen = false;
-    _autoCloseAt = 0;
-    Serial.printf("[Shutter] -> CLOSE (%d°)\n", _closeAngle);
+    _autoClosePending = false;
+    Serial.printf("[Shutter] -> CLOSE (%d deg)\n", _closeAngle);
 }
 
 void Shutter::snapshot(unsigned long durationMs) {
     _servo.write(_openAngle);
     _currentAngle = _openAngle;
     _isOpen = true;
-    _autoCloseAt = millis() + durationMs;
-    Serial.printf("[Shutter] SNAPSHOT open (%d°), auto-close in %lu ms\n",
+    _autoCloseStartMs = millis();
+    _autoCloseDurationMs = durationMs;
+    _autoClosePending = true;
+    Serial.printf("[Shutter] SNAPSHOT open (%d deg), auto-close in %lu ms\n",
                   _openAngle, durationMs);
 }
 
 void Shutter::loop() {
-    if (_autoCloseAt > 0 && millis() >= _autoCloseAt) {
+    if (_autoClosePending && millis() - _autoCloseStartMs >= _autoCloseDurationMs) {
         close();
-        Serial.printf("[Shutter] SNAPSHOT auto-close (%d°)\n", _closeAngle);
+        Serial.printf("[Shutter] SNAPSHOT auto-close (%d deg)\n", _closeAngle);
     }
 }
 
@@ -54,10 +57,10 @@ int  Shutter::closeAngle()   const { return _closeAngle; }
 
 void Shutter::setOpenAngle(int angle) {
     _openAngle = angle;
-    Serial.printf("[Shutter] openAngle set to %d°\n", angle);
+    Serial.printf("[Shutter] openAngle set to %d deg\n", angle);
 }
 
 void Shutter::setCloseAngle(int angle) {
     _closeAngle = angle;
-    Serial.printf("[Shutter] closeAngle set to %d°\n", angle);
+    Serial.printf("[Shutter] closeAngle set to %d deg\n", angle);
 }
