@@ -40,8 +40,9 @@ void WebInterface::loop() {
 }
 
 void WebInterface::handleRoot() {
-    char buf[sizeof(HTML_PAGE) + 160];
-    snprintf(buf, sizeof(buf), HTML_PAGE,
+    size_t sz = sizeof(HTML_PAGE) + 160;
+    char* buf = new char[sz];
+    snprintf(buf, sz, HTML_PAGE,
              _shutter->openAngle(),
              _shutter->closeAngle(),
              _feeder->feedRotations(),
@@ -49,6 +50,7 @@ void WebInterface::handleRoot() {
              _autoFeedEnabled ? "checked" : "",
              WiFi.localIP().toString().c_str());
     _server->send(200, "text/html", buf);
+    delete[] buf;
 }
 
 void WebInterface::handleOpen() {
