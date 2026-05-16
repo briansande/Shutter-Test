@@ -64,7 +64,18 @@ void WebInterface::loop() {
     _server->handleClient();
 
     if (_autoFeedPending && !_shutter->isOpen() && !_feeder->isFeeding()) {
+        if (!_autoFeedDelayStarted) {
+            _autoFeedDelayStarted = true;
+            _autoFeedDelayStartMs = millis();
+            return;
+        }
+
+        if (millis() - _autoFeedDelayStartMs < config::feeder::AUTO_FEED_DELAY_MS) {
+            return;
+        }
+
         _autoFeedPending = false;
+        _autoFeedDelayStarted = false;
         _feeder->feed(_feeder->feedRotations());
     }
 }
@@ -130,6 +141,7 @@ void WebInterface::handleSnapshot() {
 
     if (_autoFeedEnabled) {
         _autoFeedPending = true;
+        _autoFeedDelayStarted = false;
     }
 
     String json = "{\"position\":\"OPEN\",\"angle\":" + String(_shutter->openAngle())

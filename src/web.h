@@ -29,4 +29,6 @@ private:
     PaperFeeder* _feeder          = nullptr;
     bool         _autoFeedEnabled = false;
     bool         _autoFeedPending = false;
+    bool         _autoFeedDelayStarted = false;
+    unsigned long _autoFeedDelayStartMs = 0;
 };

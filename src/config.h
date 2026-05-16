@@ -36,6 +36,7 @@ namespace config {
         static const int MIN_FEED_ROTATIONS = 1;
         static const int MAX_FEED_ROTATIONS = 100;
         static const int MAX_JOG_STEPS = 20000;
+        static const unsigned long AUTO_FEED_DELAY_MS = 500;
 
         static const char* NVS_NAMESPACE   = "feeder";
         static const char* NVS_KEY_ROT     = "feedRot";
