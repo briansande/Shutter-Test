@@ -104,17 +104,19 @@ The web UI uses these endpoints internally:
 | `/close` | POST | Move shutter to the configured closed angle |
 | `/save?open=<0-180>&close=<0-180>` | POST | Save shutter angles |
 | `/snapshot?duration=<1-60000>` | POST | Open shutter temporarily, then auto-close |
-| `/feed?rotations=<1-100>&speed=<100-1000>` | POST | Feed paper |
-| `/feed/jog?steps=<-4096..4096>&speed=<100-1000>` | POST | Jog feeder for calibration |
+| `/feed?rotations=<1-100>&speed=<100-500>` | POST | Feed paper |
+| `/feed/jog?steps=<-20000..20000>&speed=<100-500>` | POST | Jog feeder for calibration |
 | `/feed/stop` | POST | Stop and release the feeder motor |
+| `/feed/status` | GET | Read whether the feeder motor is moving |
 | `/feed/settings` | GET | Read saved feeder settings |
-| `/feed/settings?rotations=<1-100>&speed=<100-1000>` | POST | Save feeder settings |
+| `/feed/settings?rotations=<1-100>&speed=<100-500>` | POST | Save feeder settings |
 | `/feed/auto?enabled=<0-or-1>` | POST | Enable or disable auto-feed after snapshot |
 
 ## Configuration Notes
 
 - Shutter angle defaults are `106` degrees open and `74` degrees closed.
 - Snapshot duration is limited to `1` through `60000` ms.
-- Feed speed is limited to `100` through `1000` steps per second.
+- Feed speed is limited to `100` through `500` steps per second.
 - Feed rotation count is limited to `1` through `100`.
+- Jog steps are limited to `1` through `20000` in either direction.
 - Saved shutter and feeder settings persist across ESP32 reboots.

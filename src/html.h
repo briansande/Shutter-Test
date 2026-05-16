@@ -46,6 +46,7 @@ static const char HTML_PAGE[] PROGMEM = R"rawliteral(
   }
   .btn:hover { opacity: 0.85; }
   .btn:active { transform: scale(0.97); }
+  .btn:disabled, .btn-jog:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
   .btn-open  { background: #e94560; color: #fff; }
   .btn-close { background: #0f3460; color: #fff; }
   .btn-save  { background: #533483; color: #fff; margin-top: 12px; width: 100%; }
@@ -111,18 +112,18 @@ static const char HTML_PAGE[] PROGMEM = R"rawliteral(
   </div>
   <div class="field">
     <label for="feedSpeed">Feed speed (steps/sec)</label>
-    <input type="number" id="feedSpeed" min="100" max="1000" step="50" value="%d">
+    <input type="number" id="feedSpeed" min="100" max="500" step="25" value="%d">
   </div>
   <div class="field">
     <label for="jogSteps">Jog steps (for calibration)</label>
-    <input type="number" id="jogSteps" min="1" max="4096" step="1" value="%d">
+    <input type="number" id="jogSteps" min="1" max="20000" step="1" value="%d">
   </div>
 
-  <button class="btn btn-feed" onclick="feedPaper()">FEED</button>
+  <button class="btn btn-feed" id="feedButton" onclick="feedPaper()">FEED</button>
 
   <div class="jog-row">
-    <button class="btn-jog" onclick="jog(-1)">JOG REV</button>
-    <button class="btn-jog" onclick="jog(1)">JOG FWD</button>
+    <button class="btn-jog" id="jogRevButton" onclick="jog(-1)">JOG REV</button>
+    <button class="btn-jog" id="jogFwdButton" onclick="jog(1)">JOG FWD</button>
   </div>
 
   <div class="checkbox-row">
@@ -131,7 +132,7 @@ static const char HTML_PAGE[] PROGMEM = R"rawliteral(
   </div>
 
   <button class="btn btn-save" onclick="saveFeedSettings()">Save Feed Settings</button>
-  <button class="btn btn-stop" onclick="stopFeeder()">STOP MOTOR</button>
+  <button class="btn btn-stop" id="stopButton" onclick="stopFeeder()">STOP MOTOR</button>
 
   <div class="ip">IP: %s</div>
 </div>
@@ -142,6 +143,37 @@ function showToast(msg) {
   var t = document.getElementById('toast');
   t.textContent = msg; t.className = 'toast show';
   setTimeout(function(){ t.className = 'toast'; }, 2000);
+}
+
+function setFeederBusy(busy, label) {
+  document.getElementById('feedStatus').textContent = label || (busy ? 'Feeder: BUSY...' : 'Feeder: IDLE');
+  document.getElementById('feedButton').disabled = busy;
+  document.getElementById('jogRevButton').disabled = busy;
+  document.getElementById('jogFwdButton').disabled = busy;
+}
+
+function parseResponse(r) {
+  return r.json().then(function(d){
+    if (!r.ok || d.ok === false) {
+      throw new Error(d.error || 'request failed');
+    }
+    return d;
+  });
+}
+
+function waitForFeederIdle() {
+  fetch('/feed/status')
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.feeding) {
+        setTimeout(waitForFeederIdle, 250);
+        return;
+      }
+      setFeederBusy(false, 'Feeder: IDLE');
+    })
+    .catch(function(){
+      setFeederBusy(false, 'Feeder: UNKNOWN');
+    });
 }
 
 function moveServo(dir) {
@@ -183,38 +215,57 @@ function feedPaper() {
   var rot = parseInt(document.getElementById('feedRotations').value);
   var speed = parseInt(document.getElementById('feedSpeed').value);
   if (isNaN(rot) || rot < 1) { showToast('Enter valid rotations'); return; }
-  if (isNaN(speed) || speed < 100 || speed > 1000) { showToast('Speed must be 100\u20131000'); return; }
-  document.getElementById('feedStatus').textContent = 'Feeder: FEEDING...';
+  if (isNaN(speed) || speed < 100 || speed > 500) { showToast('Speed must be 100\u2013500'); return; }
+  setFeederBusy(true, 'Feeder: FEEDING...');
   fetch('/feed?rotations=' + rot + '&speed=' + speed, {method:'POST'})
-    .then(function(r){ return r.json(); })
+    .then(parseResponse)
     .then(function(d){
-      document.getElementById('feedStatus').textContent = 'Feeder: IDLE';
       showToast('Fed ' + d.rotations + ' rotation(s) @ ' + d.speed + ' steps/sec');
+      waitForFeederIdle();
     })
-    .catch(function(){ showToast('Error feeding paper'); });
+    .catch(function(e){
+      if (e.message === 'feeder busy') {
+        setFeederBusy(true, 'Feeder: BUSY...');
+        waitForFeederIdle();
+        showToast('Feeder is still moving');
+        return;
+      }
+      setFeederBusy(false, 'Feeder: IDLE');
+      showToast('Error feeding paper');
+    });
 }
 
 function jog(dir) {
   var steps = parseInt(document.getElementById('jogSteps').value);
   var speed = parseInt(document.getElementById('feedSpeed').value);
   if (isNaN(steps) || steps < 1) { showToast('Enter valid jog steps'); return; }
-  if (isNaN(speed) || speed < 100 || speed > 1000) { showToast('Speed must be 100\u20131000'); return; }
+  if (steps > 20000) { showToast('Jog steps must be 1\u201320000'); return; }
+  if (isNaN(speed) || speed < 100 || speed > 500) { showToast('Speed must be 100\u2013500'); return; }
   var actual = steps * dir;
-  document.getElementById('feedStatus').textContent = 'Feeder: JOGGING...';
+  setFeederBusy(true, 'Feeder: JOGGING...');
   fetch('/feed/jog?steps=' + actual + '&speed=' + speed, {method:'POST'})
-    .then(function(r){ return r.json(); })
+    .then(parseResponse)
     .then(function(d){
-      document.getElementById('feedStatus').textContent = 'Feeder: IDLE';
       showToast('Jogged ' + d.steps + ' steps');
+      waitForFeederIdle();
     })
-    .catch(function(){ showToast('Error jogging'); });
+    .catch(function(e){
+      if (e.message === 'feeder busy') {
+        setFeederBusy(true, 'Feeder: BUSY...');
+        waitForFeederIdle();
+        showToast('Feeder is still moving');
+        return;
+      }
+      setFeederBusy(false, 'Feeder: IDLE');
+      showToast('Error jogging');
+    });
 }
 
 function stopFeeder() {
   fetch('/feed/stop', {method:'POST'})
-    .then(function(r){ return r.json(); })
+    .then(parseResponse)
     .then(function(d){
-      document.getElementById('feedStatus').textContent = 'Feeder: IDLE';
+      setFeederBusy(false, 'Feeder: IDLE');
       showToast('Motor stopped');
     })
     .catch(function(){ showToast('Error stopping motor'); });
@@ -224,7 +275,7 @@ function saveFeedSettings() {
   var rot = parseInt(document.getElementById('feedRotations').value);
   var speed = parseInt(document.getElementById('feedSpeed').value);
   if (isNaN(rot) || rot < 1) { showToast('Enter valid rotations'); return; }
-  if (isNaN(speed) || speed < 100 || speed > 1000) { showToast('Speed must be 100\u20131000'); return; }
+  if (isNaN(speed) || speed < 100 || speed > 500) { showToast('Speed must be 100\u2013500'); return; }
   fetch('/feed/settings?rotations=' + rot + '&speed=' + speed, {method:'POST'})
     .then(function(r){ return r.json(); })
     .then(function(d){ showToast(d.ok ? 'Feed settings saved' : 'Save failed'); })

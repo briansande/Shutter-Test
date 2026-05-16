@@ -51,6 +51,7 @@ void WebInterface::begin(Shutter& shutter, PaperFeeder& feeder, uint16_t port) {
     _server->on("/feed",              HTTP_POST, [this](){ handleFeed(); });
     _server->on("/feed/jog",          HTTP_POST, [this](){ handleFeedJog(); });
     _server->on("/feed/stop",         HTTP_POST, [this](){ handleFeedStop(); });
+    _server->on("/feed/status",       HTTP_GET,  [this](){ handleFeedStatus(); });
     _server->on("/feed/settings", HTTP_GET,      [this](){ handleFeedSettingsGet(); });
     _server->on("/feed/settings", HTTP_POST,     [this](){ handleFeedSettingsSave(); });
     _server->on("/feed/auto",         HTTP_POST, [this](){ handleFeedAuto(); });
@@ -205,6 +206,11 @@ void WebInterface::handleFeedJog() {
 void WebInterface::handleFeedStop() {
     _feeder->stop();
     _server->send(200, "application/json", "{\"ok\":true}");
+}
+
+void WebInterface::handleFeedStatus() {
+    String json = "{\"feeding\":" + String(_feeder->isFeeding() ? "true" : "false") + "}";
+    _server->send(200, "application/json", json);
 }
 
 void WebInterface::handleFeedSettingsGet() {

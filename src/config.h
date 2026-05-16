@@ -27,15 +27,15 @@ namespace config {
 
         static const int STEPS_PER_REV = 2048;
         static const int DEFAULT_FEED_ROTATIONS = 1;
-        static const int STEP_DELAY_MS = 2;
+        static const int STEP_DELAY_MS = 5;
         static const int MIN_FEED_SPEED_STEPS_PER_SEC = 100;
-        static const int MAX_FEED_SPEED_STEPS_PER_SEC = 1000;
+        static const int MAX_FEED_SPEED_STEPS_PER_SEC = 500;
         static const int STARTUP_STEP_DELAY_MS = 12;
         static const int STARTUP_SETTLE_MS = 50;
-        static const int RAMP_STEPS = 64;
+        static const int RAMP_STEPS = 256;
         static const int MIN_FEED_ROTATIONS = 1;
         static const int MAX_FEED_ROTATIONS = 100;
-        static const int MAX_JOG_STEPS = 4096;
+        static const int MAX_JOG_STEPS = 20000;
 
         static const char* NVS_NAMESPACE   = "feeder";
         static const char* NVS_KEY_ROT     = "feedRot";

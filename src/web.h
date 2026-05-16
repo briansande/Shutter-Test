@@ -19,6 +19,7 @@ private:
     void handleFeed();
     void handleFeedJog();
     void handleFeedStop();
+    void handleFeedStatus();
     void handleFeedSettingsGet();
     void handleFeedSettingsSave();
     void handleFeedAuto();
